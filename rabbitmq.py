@@ -28,6 +28,13 @@ def rabbitmq_config(c):
         elif child.key == 'ExtendedMemory':
             extended_memory = bool(child.values[0])
 
+def dispatch_values(instance, values, type):
+    v = collectd.Values(plugin='rabbitmq')
+    v.type = type
+    v.type_instance = instance
+    v.values = values
+    v.dispatch()
+
 def rabbitmq_read():
     authinfo = urllib2.HTTPBasicAuthHandler()
     authinfo.add_password(realm='RabbitMQ Management',
@@ -44,14 +51,19 @@ def rabbitmq_read():
     f = urllib2.urlopen('http://%s:%d/api/nodes/rabbit@%s?memory=true' % (host, port, l))
     j = json.load(f)
 
-    for m in j['memory']:
-        if m == 'total':
-            continue
-        v = collectd.Values(plugin='rabbitmq')
-        v.type = 'bytes'
-        v.type_instance = m
-        v.values = [j['memory'][m]]
-        v.dispatch()
+    metrics = {'bytes': ['disk_free', 'disk_free_limit', 'mem_limit', 'mem_used'], 'gauge': ['fd_total', 'fd_used', 'proc_total', 'proc_used', 'sockets_total', 'sockets_used'], 'uptime': ['uptime']}
+
+    for type in metrics:
+        for metric in metrics[type]:
+            dispatch_values(metric, [j[metric]], type)
+
+    if extended_memory:
+        for m in j['memory']:
+            # Skip the total, can infer it by summing the individual counts
+            if m == 'total':
+                continue
+            # Prefix each memory pool to help distinguish them
+            dispatch_values('mem_' + m, [j['memory'][m]], 'bytes')
 
 collectd.register_config(rabbitmq_config)
 collectd.register_read(rabbitmq_read)
