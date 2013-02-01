@@ -1,0 +1,1 @@
+RabbitMQ plugin for collectd
