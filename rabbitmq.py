@@ -6,7 +6,6 @@ import collectd
 import urllib2
 from urllib2 import HTTPError, URLError
 import json
-from socket import gethostname
 
 host = 'localhost'
 port = 15672
@@ -58,12 +57,29 @@ def rabbitmq_read():
 
     urllib2.install_opener(opener)
 
-    if host == 'localhost':
-        l = gethostname().split('.')[0]
-    else:
-        l = host.split('.')[0]
+    u = 'http://%s:%d/api/overview' % (host, port)
 
-    u = 'http://%s:%d/api/nodes/rabbit@%s' % (host, port, l)
+    j = fetch_json(u)
+
+    # Objects, exchanges, queues, etc.
+    for o in j['object_totals']:
+        dispatch_values(o, [j['object_totals'][o]], 'gauge')
+
+    # Global message statistics, infer rates from these counters rather
+    # than use what RabbitMQ calculates
+    for m in j['message_stats']:
+        if m.endswith('_details'):
+            continue
+        dispatch_values('msg_' + m, [j['message_stats'][m]], 'counter')
+
+    # Queue totals, across all queues currently defined
+    for q in j['queue_totals']:
+        if q.endswith('_details'):
+            continue
+        dispatch_values('queued_' + q, [j['queue_totals'][q]], 'gauge')
+
+    # Use the previous JSON document to get the node name
+    u = 'http://%s:%d/api/nodes/%s' % (host, port, j['node'])
 
     # Must be a nicer way of doing this?
     if extended_memory:
@@ -102,27 +118,6 @@ def rabbitmq_read():
                 continue
             # Prefix each memory pool to help distinguish them
             dispatch_values('mem_' + m, [j['memory'][m]], 'bytes')
-
-    u = 'http://%s:%d/api/overview' % (host, port)
-
-    j = fetch_json(u)
-
-    # Objects, exchanges, queues, etc.
-    for o in j['object_totals']:
-        dispatch_values(o, [j['object_totals'][o]], 'gauge')
-
-    # Global message statistics, infer rates from these counters rather
-    # than use what RabbitMQ calculates
-    for m in j['message_stats']:
-        if m.endswith('_details'):
-            continue
-        dispatch_values('msg_' + m, [j['message_stats'][m]], 'counter')
-
-    # Queue totals, across all queues currently defined
-    for q in j['queue_totals']:
-        if q.endswith('_details'):
-            continue
-        dispatch_values('queued_' + q, [j['queue_totals'][q]], 'gauge')
 
 collectd.register_config(rabbitmq_config)
 collectd.register_read(rabbitmq_read)
