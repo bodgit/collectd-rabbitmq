@@ -28,8 +28,10 @@ def rabbitmq_config(c):
         elif child.key == 'ExtendedMemory':
             extended_memory = bool(child.values[0])
 
-def dispatch_values(instance, values, type):
+def dispatch_values(instance, values, type, plugin=None):
     v = collectd.Values(plugin='rabbitmq')
+    if plugin:
+        v.plugin_instance = plugin
     v.type = type
     v.type_instance = instance
     v.values = values
@@ -118,6 +120,28 @@ def rabbitmq_read():
                 continue
             # Prefix each memory pool to help distinguish them
             dispatch_values('mem_' + m, [j['memory'][m]], 'bytes')
+
+    # Per-queue statistics
+    u = 'http://%s:%d/api/queues' % (host, port)
+
+    j = fetch_json(u)
+
+    # Loop through each queue
+    #
+    # XXX vhost is currently ignored
+    # XXX temporary queues are not currently ignored
+    for queue in j:
+        dispatch_values('memory', [queue['memory']], 'bytes', queue['name'])
+        for m in queue['message_stats']:
+            if m.endswith('_details'):
+                continue
+            dispatch_values('msg_' + m, [queue['message_stats'][m]], 'counter', queue['name'])
+        for stat in queue:
+            if not stat.startswith('messages'):
+                continue
+            if stat.endswith('_details'):
+                continue
+            dispatch_values('queued_' + stat, [queue[stat]], 'gauge', queue['name'])
 
 collectd.register_config(rabbitmq_config)
 collectd.register_read(rabbitmq_read)
