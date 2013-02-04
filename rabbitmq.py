@@ -132,6 +132,7 @@ def rabbitmq_read():
     # XXX temporary queues are not currently ignored
     for queue in j:
         dispatch_values('memory', [queue['memory']], 'bytes', queue['name'])
+        dispatch_values('consumers', [queue['consumers']], 'gauge', queue['name'])
         for m in queue['message_stats']:
             if m.endswith('_details'):
                 continue
