@@ -76,6 +76,8 @@ def rabbitmq_read():
 
     # Queue totals, across all queues currently defined
     for q in j['queue_totals']:
+        if not q.startswith('messages_'):
+            continue
         if q.endswith('_details'):
             continue
         dispatch_values('queued_' + q, [j['queue_totals'][q]], 'gauge')
@@ -138,7 +140,7 @@ def rabbitmq_read():
                 continue
             dispatch_values('msg_' + m, [queue['message_stats'][m]], 'counter', queue['name'])
         for stat in queue:
-            if not stat.startswith('messages'):
+            if not stat.startswith('messages_'):
                 continue
             if stat.endswith('_details'):
                 continue
